@@ -1,0 +1,30 @@
+api:
+  dashboard: true
+
+
+entryPoints:
+  http:
+    address: ":80"
+  https:
+    address: ":443"
+  teamspeak-1:
+    address: ":10011"
+  teamspeak-2:
+    address: ":30033"
+  teamspeak-3:
+    address: ":9987/udp"
+
+
+providers:
+  docker:
+    watch: true
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+
+certificatesResolvers:
+  http:
+    acme:
+      email: CHANGE_ME
+      storage: acme.json
+      httpChallenge:
+        entryPoint: http

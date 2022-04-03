@@ -1,0 +1,85 @@
+version: '3'
+
+services:
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    networks:
+      - traefik-proxy
+    ports:
+      - 80:80
+      - 443:443
+      - 9987:9987/udp
+      - 30033:30033
+      - 10011:10011
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/traefik.yml:/traefik.yml
+      - ./traefik/acme.json:/acme.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.entrypoints=http"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN}.${TLD}`)"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_BASIC_AUTH_HTPASSWD}" # user:password
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+      - "traefik.http.routers.traefik-secure.entrypoints=https"
+      - "traefik.http.routers.traefik-secure.rule=Host(`traefik.${DOMAIN}.${TLD}`)"
+      - "traefik.http.routers.traefik-secure.middlewares=traefik-auth"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=http"
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+  teamspeak:
+    image: teamspeak
+    container_name: teamspeak
+    restart: unless-stopped
+    depends_on:
+      - teamspeak-db
+    networks:
+      - traefik-proxy
+    volumes:
+      - ts3-data:/var/ts3server/
+    environment:
+      - TS3SERVER_LICENSE=accept
+      - TS3SERVER_DB_PLUGIN=ts3db_mariadb
+      - TS3SERVER_DB_SQLCREATEPATH=create_mariadb
+      - TS3SERVER_DB_HOST=teamspeak-db
+      - TS3SERVER_DB_USER=${TS3_DB_USER}
+      - TS3SERVER_DB_PASSWORD=${TS3_DB_PW}
+      - TS3SERVER_DB_NAME=${TS3_DB_NAME}
+      - TS3SERVER_DB_WAITUNTILREADY=30
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.tcp.routers.teamspeak-server-query.service=teamspeak-server-query
+      - traefik.tcp.routers.teamspeak-server-query.entrypoints=teamspeak-server-query
+      - traefik.tcp.routers.teamspeak-server-query.rule=HostSNI(`*`)
+      - traefik.tcp.services.teamspeak-server-query.loadbalancer.server.port=10011
+      - traefik.tcp.routers.teamspeak-filetransfer.service=teamspeak-filetransfer
+      - traefik.tcp.routers.teamspeak-filetransfer.entrypoints=teamspeak-filetransfer
+      - traefik.tcp.routers.teamspeak-filetransfer.rule=HostSNI(`*`)
+      - traefik.tcp.services.teamspeak-filetransfer.loadbalancer.server.port=30033
+      - traefik.udp.routers.teamspeak.service=teamspeak
+      - traefik.udp.routers.teamspeak.entrypoints=teamspeak
+      - traefik.udp.services.teamspeak.loadbalancer.server.port=9987
+  teamspeak-db:
+    image: mariadb
+    container_name: teamspeak-db
+    restart: unless-stopped
+    networks:
+      - traefik-proxy
+    environment:
+      - MYSQL_ROOT_PASSWORD=${TS3_DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${TS3_DB_NAME}
+      - MYSQL_USER=${TS3_DB_USER}
+      - MYSQL_PASSWORD=${TS3_DB_PW}
+    volumes:
+      - ts3-db-data:/var/lib/mysql
+
+volumes:
+  ts3-data:
+  ts3-db-data:
+
+networks:
+  traefik-proxy:
